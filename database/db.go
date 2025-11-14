@@ -1,54 +1,44 @@
 package database
 
 import (
+	"fmt"
 	"log"
-	"os"
+	"student-backend/config"
 	"student-backend/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-func InitDB() (*gorm.DB, error) {
-	dsn := buildDSN()
+func InitDB(cfg *config.Config) (*gorm.DB, error) {
+	dsn := buildDSN(cfg)
 
-	log.Printf("Connecting to database: %s", dsn)
+	log.Printf("Connecting to database...")
+	// Не логируем полный DSN из соображений безопасности
+	log.Printf("Database: %s@%s:%d/%s", cfg.DBUser, cfg.DBHost, cfg.DBPort, cfg.DBName)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	// Автомиграция - создаст таблицу если её нет
 	err = db.AutoMigrate(&models.Student{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to auto-migrate: %w", err)
 	}
 
 	log.Println("✅ Successfully connected to PostgreSQL with GORM!")
 	return db, nil
 }
 
-func buildDSN() string {
-	host := getEnv("DB_HOST", "localhost")
-	port := getEnv("DB_PORT", "5432")
-	user := getEnv("DB_USER", "max")
-	password := getEnv("DB_PASSWORD", "12345")
-	dbname := getEnv("DB_NAME", "students_db")
-	sslmode := getEnv("DB_SSLMODE", "disable")
-
-	return "host=" + host +
-		" user=" + user +
-		" password=" + password +
-		" dbname=" + dbname +
-		" port=" + port +
-		" sslmode=" + sslmode +
-		" TimeZone=UTC"
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
+func buildDSN(cfg *config.Config) string {
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=UTC",
+		cfg.DBHost,
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBName,
+		cfg.DBPort,
+		cfg.DBSSLMode,
+	)
 }
