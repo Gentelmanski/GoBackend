@@ -1,89 +1,54 @@
 package database
 
 import (
-	"database/sql"
-	"fmt"
 	"log"
+	"os"
+	"student-backend/models"
 
-	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq" // драйвер PostgreSQL
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-const (
-	host     = "localhost"
-	port     = 5432
-	user     = "max"
-	password = "12345"
-	dbname   = "students_db"
-)
+func InitDB() (*gorm.DB, error) {
+	dsn := buildDSN()
 
-func InitDB() (*sqlx.DB, error) {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
+	log.Printf("Connecting to database: %s", dsn)
 
-	// Сначала используем стандартный database/sql
-	db, err := sql.Open("postgres", psqlInfo)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return nil, fmt.Errorf("error opening database: %v", err)
+		return nil, err
 	}
 
-	// Затем оборачиваем в sqlx
-	dbx := sqlx.NewDb(db, "postgres")
-
-	// Проверяем подключение
-	err = dbx.Ping()
+	// Автомиграция - создаст таблицу если её нет
+	err = db.AutoMigrate(&models.Student{})
 	if err != nil {
-		return nil, fmt.Errorf("error pinging database: %v", err)
+		return nil, err
 	}
 
-	// Создаем таблицу
-	err = createTable(db)
-	if err != nil {
-		return nil, fmt.Errorf("error creating table: %v", err)
-	}
-
-	log.Println("Successfully connected to PostgreSQL!")
-	return dbx, nil
+	log.Println("✅ Successfully connected to PostgreSQL with GORM!")
+	return db, nil
 }
 
-func createTable(db *sql.DB) error {
-	createTableSQL := `
-    CREATE TABLE IF NOT EXISTS students (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        surname VARCHAR(100) NOT NULL
-    );`
+func buildDSN() string {
+	host := getEnv("DB_HOST", "localhost")
+	port := getEnv("DB_PORT", "5432")
+	user := getEnv("DB_USER", "max")
+	password := getEnv("DB_PASSWORD", "12345")
+	dbname := getEnv("DB_NAME", "students_db")
+	sslmode := getEnv("DB_SSLMODE", "disable")
 
-	_, err := db.Exec(createTableSQL)
-	if err != nil {
-		return fmt.Errorf("error creating students table: %v", err)
-	}
-
-	// Исправляем последовательность, если она сбилась
-	err = fixSequence(db)
-	if err != nil {
-		log.Printf("⚠️ Warning: could not fix sequence: %v", err)
-	}
-
-	log.Println("✅ Students table verified (id, name, surname)")
-	return nil
+	return "host=" + host +
+		" user=" + user +
+		" password=" + password +
+		" dbname=" + dbname +
+		" port=" + port +
+		" sslmode=" + sslmode +
+		" TimeZone=UTC"
 }
 
-func fixSequence(db *sql.DB) error {
-	// Устанавливаем правильное значение для последовательности
-	fixSeqSQL := `
-    SELECT setval(
-        'students_id_seq',
-        COALESCE((SELECT MAX(id) FROM students), 0) + 1,
-        false
-    )`
-
-	var result int64
-	err := db.QueryRow(fixSeqSQL).Scan(&result)
-	if err != nil {
-		return fmt.Errorf("error fixing sequence: %v", err)
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
-
-	log.Printf("✅ Sequence fixed, next ID will be: %d", result)
-	return nil
+	return defaultValue
 }

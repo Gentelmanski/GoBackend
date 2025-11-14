@@ -1,9 +1,14 @@
 package models
 
 type Student struct {
-	ID      *int   `json:"id,omitempty" db:"id"`
-	Name    string `json:"name" db:"name"`
-	Surname string `json:"surname" db:"surname"`
+	ID      *uint  `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
+	Name    string `json:"name" gorm:"size:100;not null"`
+	Surname string `json:"surname" gorm:"size:100;not null"`
+}
+
+// TableName указывает имя таблицы в БД
+func (Student) TableName() string {
+	return "students"
 }
 
 type PaginatedResponse struct {

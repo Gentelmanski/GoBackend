@@ -11,14 +11,14 @@ import (
 	"student-backend/models"
 
 	"github.com/gorilla/mux"
-	"github.com/jmoiron/sqlx"
+	"gorm.io/gorm"
 )
 
 type StudentHandler struct {
-	db *sqlx.DB
+	db *gorm.DB
 }
 
-func NewStudentHandler(db *sqlx.DB) *StudentHandler {
+func NewStudentHandler(db *gorm.DB) *StudentHandler {
 	return &StudentHandler{db: db}
 }
 
@@ -40,77 +40,63 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 
 	// Параметры сортировки
 	sortBy := r.URL.Query().Get("sortBy")
-	var orderBy string
-	if sortBy != "" {
-		if strings.HasPrefix(sortBy, "-") {
-			field := strings.TrimPrefix(sortBy, "-")
-			orderBy = field + " DESC"
-		} else {
-			orderBy = sortBy + " ASC"
-		}
-	} else {
-		orderBy = "id ASC"
-	}
 
 	// Параметры фильтрации
 	nameFilter := r.URL.Query().Get("name")
 	surnameFilter := r.URL.Query().Get("surname")
 
-	// Базовый запрос
-	baseQuery := "FROM students WHERE 1=1"
-	countQuery := "SELECT COUNT(*) " + baseQuery
-	dataQuery := "SELECT id, name, surname " + baseQuery
+	// Создаем запрос с GORM
+	query := h.db.Model(&models.Student{})
 
-	var args []interface{}
-	argCount := 0
-
-	// Добавляем условия фильтрации
+	// Применяем фильтрацию
 	if nameFilter != "" {
-		argCount++
-		baseQuery += " AND name ILIKE $" + strconv.Itoa(argCount)
-		args = append(args, "%"+strings.Trim(nameFilter, "*")+"%")
+		cleanName := strings.Trim(nameFilter, "*")
+		query = query.Where("name ILIKE ?", "%"+cleanName+"%")
 	}
 
 	if surnameFilter != "" {
-		argCount++
-		baseQuery += " AND surname ILIKE $" + strconv.Itoa(argCount)
-		args = append(args, "%"+strings.Trim(surnameFilter, "*")+"%")
+		cleanSurname := strings.Trim(surnameFilter, "*")
+		query = query.Where("surname ILIKE ?", "%"+cleanSurname+"%")
 	}
 
-	// Обновляем запросы с учетом фильтров
-	countQuery = "SELECT COUNT(*) " + baseQuery
-	dataQuery = "SELECT id, name, surname " + baseQuery + " ORDER BY " + orderBy +
-		" LIMIT $" + strconv.Itoa(argCount+1) + " OFFSET $" + strconv.Itoa(argCount+2)
-
 	// Получаем общее количество
-	var totalItems int
-	err := h.db.Get(&totalItems, countQuery, args...)
-	if err != nil {
-		log.Printf("Error counting students: %v", err)
+	var totalItems int64
+	if err := query.Count(&totalItems).Error; err != nil {
+		log.Printf("❌ Error counting students: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Получаем данные
-	args = append(args, limit, offset)
+	// Применяем сортировку
+	if sortBy != "" {
+		if strings.HasPrefix(sortBy, "-") {
+			field := strings.TrimPrefix(sortBy, "-")
+			query = query.Order(field + " DESC")
+		} else {
+			query = query.Order(sortBy + " ASC")
+		}
+	} else {
+		query = query.Order("id ASC")
+	}
+
+	// Применяем пагинацию
 	var students []models.Student
-	err = h.db.Select(&students, dataQuery, args...)
-	if err != nil {
-		log.Printf("Error fetching students: %v", err)
+	if err := query.Offset(offset).Limit(limit).Find(&students).Error; err != nil {
+		log.Printf("❌ Error fetching students: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
 	// Рассчитываем метаданные
-	totalPages := (totalItems + limit - 1) / limit
-	remainingCount := totalItems - (page * limit)
+	totalPages := (int(totalItems) + limit - 1) / limit
+	remainingCount := int(totalItems) - (page * limit)
 	if remainingCount < 0 {
 		remainingCount = 0
 	}
 
 	response := models.PaginatedResponse{
 		Meta: models.Meta{
-			TotalItems:     totalItems,
+			TotalItems:     int(totalItems),
 			TotalPages:     totalPages,
 			CurrentPage:    page,
 			PerPage:        limit,
@@ -119,13 +105,14 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 		Items: students,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("❌ Error encoding response: %v", err)
+	}
 }
 
 func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Логируем весь запрос для отладки
 	log.Printf("📨 POST /api/students - Content-Type: %s, Content-Length: %d",
 		r.Header.Get("Content-Type"), r.ContentLength)
 
@@ -139,7 +126,6 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("📝 Request body: %s", string(body))
 
-	// Декодируем JSON
 	if err := json.Unmarshal(body, &student); err != nil {
 		log.Printf("❌ Error decoding JSON: %v", err)
 		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
@@ -155,25 +141,15 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверяем подключение к базе данных
-	if err := h.db.Ping(); err != nil {
-		log.Printf("❌ Database connection error: %v", err)
-		http.Error(w, `{"error": "Database connection failed"}`, http.StatusInternalServerError)
-		return
-	}
-
-	query := `INSERT INTO students (name, surname) VALUES ($1, $2) RETURNING id`
-	var id int
-	err = h.db.QueryRow(query, student.Name, student.Surname).Scan(&id)
-	if err != nil {
-		log.Printf("❌ Database error creating student: %v", err)
-		log.Printf("❌ Query: %s, Params: %s, %s", query, student.Name, student.Surname)
+	// Создаем студента с GORM
+	result := h.db.Create(&student)
+	if result.Error != nil {
+		log.Printf("❌ Database error creating student: %v", result.Error)
 		http.Error(w, `{"error": "Failed to create student in database"}`, http.StatusInternalServerError)
 		return
 	}
 
-	student.ID = &id
-	log.Printf("✅ Student created successfully with ID: %d", id)
+	log.Printf("✅ Student created successfully with ID: %d", student.ID)
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(student); err != nil {
@@ -181,7 +157,6 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Обновление студента
 func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -212,39 +187,39 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверяем существование студента
-	var exists bool
-	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM students WHERE id = $1)", id).Scan(&exists)
-	if err != nil {
-		log.Printf("❌ Error checking student existence: %v", err)
+	var existingStudent models.Student
+	result := h.db.First(&existingStudent, id)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			log.Printf("❌ Student with ID %d not found", id)
+			http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
+			return
+		}
+		log.Printf("❌ Error checking student existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	if !exists {
-		log.Printf("❌ Student with ID %d not found", id)
-		http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
-		return
+	// Обновляем студента с GORM
+	updateData := models.Student{
+		Name:    student.Name,
+		Surname: student.Surname,
 	}
 
-	// Обновляем студента (ТОЛЬКО name и surname)
-	query := `UPDATE students SET name = $1, surname = $2 WHERE id = $3`
-	result, err := h.db.Exec(query, student.Name, student.Surname, id)
-	if err != nil {
-		log.Printf("❌ Error updating student in database: %v", err)
+	result = h.db.Model(&existingStudent).Updates(updateData)
+	if result.Error != nil {
+		log.Printf("❌ Error updating student in database: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("⚠️ Error getting rows affected: %v", err)
-	} else {
-		log.Printf("✅ Student updated successfully. Rows affected: %d", rowsAffected)
-	}
+	log.Printf("✅ Student updated successfully. Rows affected: %d", result.RowsAffected)
 
-	// Возвращаем обновленного студента
-	student.ID = &id
-	if err := json.NewEncoder(w).Encode(student); err != nil {
+	// Получаем обновленного студента
+	var updatedStudent models.Student
+	h.db.First(&updatedStudent, id)
+
+	if err := json.NewEncoder(w).Encode(updatedStudent); err != nil {
 		log.Printf("❌ Error encoding response: %v", err)
 	}
 }
@@ -255,30 +230,35 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
+		log.Printf("❌ Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid student ID"}`, http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("🗑️ Deleting student with ID: %d", id)
+
 	// Проверяем существование студента
-	var exists bool
-	err = h.db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM students WHERE id = $1)", id)
-	if err != nil {
-		log.Printf("Error checking student existence: %v", err)
+	var student models.Student
+	result := h.db.First(&student, id)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			log.Printf("❌ Student with ID %d not found", id)
+			http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
+			return
+		}
+		log.Printf("❌ Error checking student existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	if !exists {
-		http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
-		return
-	}
-
-	_, err = h.db.Exec("DELETE FROM students WHERE id = $1", id)
-	if err != nil {
-		log.Printf("Error deleting student: %v", err)
+	// Удаляем студента с GORM
+	result = h.db.Delete(&student)
+	if result.Error != nil {
+		log.Printf("❌ Error deleting student: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("✅ Student deleted successfully. Rows affected: %d", result.RowsAffected)
 	w.WriteHeader(http.StatusNoContent)
 }
