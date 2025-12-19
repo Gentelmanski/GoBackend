@@ -1,12 +1,24 @@
 package models
 
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
 type Student struct {
-	ID      *uint  `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
-	Name    string `json:"name" gorm:"size:100;not null"`
-	Surname string `json:"surname" gorm:"size:100;not null"`
+	ID        uint           `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name      string         `json:"name" gorm:"size:100;not null"`
+	Surname   string         `json:"surname" gorm:"size:100;not null"`
+	Email     string         `json:"email,omitempty" gorm:"size:255"`
+	GroupID   *uint          `json:"group_id,omitempty"`
+	Group     *Group         `json:"group,omitempty" gorm:"foreignKey:GroupID"`
+	UserID    *uint          `json:"user_id,omitempty" gorm:"unique"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
-// TableName указывает имя таблицы в БД
 func (Student) TableName() string {
 	return "students"
 }
@@ -26,5 +38,5 @@ type Meta struct {
 
 type SortConfig struct {
 	Active    string `json:"active"`
-	Direction string `json:"direction"` // "asc" или "desc"
+	Direction string `json:"direction"`
 }

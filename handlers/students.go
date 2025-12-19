@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
+	"student-backend/middleware"
 	"student-backend/models"
 
 	"github.com/gorilla/mux"
@@ -24,6 +24,13 @@ func NewStudentHandler(db *gorm.DB) *StudentHandler {
 
 func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Получаем информацию о текущем пользователе
+	claims := middleware.GetUserClaims(r.Context())
+	if claims == nil {
+		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
+		return
+	}
 
 	// Параметры пагинации
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
@@ -59,6 +66,17 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("surname ILIKE ?", "%"+cleanSurname+"%")
 	}
 
+	// Если пользователь - студент, показываем только его данные
+	if claims.Role == models.RoleStudent {
+		var student models.Student
+		if err := h.db.Where("user_id = ?", claims.UserID).First(&student).Error; err == nil {
+			query = query.Where("id = ?", student.ID)
+		} else {
+			// Если у студента нет записи, показываем пустой список
+			query = query.Where("1 = 0")
+		}
+	}
+
 	// Получаем общее количество
 	var totalItems int64
 	if err := query.Count(&totalItems).Error; err != nil {
@@ -67,7 +85,7 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Применяем сортировку
+	// Применяем сортировки
 	if sortBy != "" {
 		if strings.HasPrefix(sortBy, "-") {
 			field := strings.TrimPrefix(sortBy, "-")
@@ -87,7 +105,6 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Рассчитываем метаданные
 	totalPages := (int(totalItems) + limit - 1) / limit
 	remainingCount := int(totalItems) - (page * limit)
 	if remainingCount < 0 {
@@ -112,6 +129,20 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 
 func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Проверяем права - только админ может создавать студентов
+	claims := middleware.GetUserClaims(r.Context())
+	if claims == nil {
+		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if claims.Role != models.RoleAdmin {
+		log.Printf("❌ User %s (role: %s) tried to create student without permission",
+			claims.Email, claims.Role)
+		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
+		return
+	}
 
 	log.Printf("📨 POST /api/students - Content-Type: %s, Content-Length: %d",
 		r.Header.Get("Content-Type"), r.ContentLength)
@@ -160,6 +191,13 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Получаем информацию о текущем пользователе
+	claims := middleware.GetUserClaims(r.Context())
+	if claims == nil {
+		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
+		return
+	}
+
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -168,7 +206,25 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("🔄 Updating student with ID: %d", id)
+	// Проверяем права
+	if claims.Role == models.RoleStudent {
+		// Студент может редактировать только свою запись
+		var userStudent models.Student
+		if err := h.db.Where("user_id = ?", claims.UserID).First(&userStudent).Error; err != nil {
+			log.Printf("❌ Student %s doesn't have a student record", claims.Email)
+			http.Error(w, `{"error": "Student record not found"}`, http.StatusForbidden)
+			return
+		}
+
+		if uint(id) != userStudent.ID {
+			log.Printf("❌ Student %s tried to edit another student's data (ID: %d)",
+				claims.Email, id)
+			http.Error(w, `{"error": "Can only edit your own data"}`, http.StatusForbidden)
+			return
+		}
+	}
+
+	log.Printf("🔄 Updating student with ID: %d (by user %s)", id, claims.Email)
 
 	var student models.Student
 	if err := json.NewDecoder(r.Body).Decode(&student); err != nil {
@@ -227,6 +283,20 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Проверяем права - только админ может удалять студентов
+	claims := middleware.GetUserClaims(r.Context())
+	if claims == nil {
+		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if claims.Role != models.RoleAdmin {
+		log.Printf("❌ User %s (role: %s) tried to delete student without permission",
+			claims.Email, claims.Role)
+		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
+		return
+	}
+
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -235,7 +305,7 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("🗑️ Deleting student with ID: %d", id)
+	log.Printf("🗑️ Deleting student with ID: %d (by admin %s)", id, claims.Email)
 
 	// Проверяем существование студента
 	var student models.Student
