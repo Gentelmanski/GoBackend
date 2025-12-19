@@ -23,11 +23,19 @@ func (am *AuthMiddleware) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Исключаем публичные маршруты
 		publicRoutes := []string{"/", "/health", "/api/auth/login", "/api/auth/register"}
+
+		// Проверяем, является ли текущий путь публичным
+		isPublic := false
 		for _, route := range publicRoutes {
 			if r.URL.Path == route {
-				next.ServeHTTP(w, r)
-				return
+				isPublic = true
+				break
 			}
+		}
+
+		if isPublic {
+			next.ServeHTTP(w, r)
+			return
 		}
 
 		// Извлекаем токен из заголовка

@@ -53,7 +53,7 @@ func main() {
 	// Создание роутера
 	r := mux.NewRouter()
 
-	// Добавление middleware
+	// Добавление middleware CORS для всех маршрутов
 	r.Use(middleware.CORS)
 	r.Use(loggingMiddleware)
 
@@ -66,6 +66,7 @@ func main() {
 	log.Printf("🔐 JWT Expiry: %d hours", cfg.JWTExpiry)
 
 	log.Fatal(http.ListenAndServe(serverAddr, r))
+
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -91,56 +92,42 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
-
 func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 	studentHandler *handlers.StudentHandler, db *gorm.DB,
 	authMiddleware *middleware.AuthMiddleware) {
 
-	// Публичные маршруты (без аутентификации)
-	r.HandleFunc("/", rootHandler).Methods("GET")
-	r.HandleFunc("/health", healthHandler(db)).Methods("GET")
-	r.HandleFunc("/api/auth/login", authHandler.Login).Methods("POST")
-	r.HandleFunc("/api/auth/register", authHandler.Register).Methods("POST")
-
-	// Защищенные маршруты
+	// Создаем отдельный роутер для API с middleware аутентификации
 	api := r.PathPrefix("/api").Subrouter()
 
-	// Применяем middleware аутентификации к защищенным маршрутам
-	api.Use(authMiddleware.AuthMiddleware)
+	// Публичные маршруты API (без аутентификации)
+	api.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
+	api.HandleFunc("/auth/register", authHandler.Register).Methods("POST")
+
+	// Защищенные маршруты API
+	protectedAPI := r.PathPrefix("/api").Subrouter()
+	protectedAPI.Use(authMiddleware.AuthMiddleware)
 
 	// Аутентификация
-	api.HandleFunc("/auth/me", authHandler.GetCurrentUser).Methods("GET")
+	protectedAPI.HandleFunc("/auth/me", authHandler.GetCurrentUser).Methods("GET")
 
-	// Создаем подроутеры для студентов с разными уровнями доступа
+	// Студенты
+	protectedAPI.HandleFunc("/students", studentHandler.GetStudents).Methods("GET")
+	protectedAPI.HandleFunc("/students", studentHandler.CreateStudent).Methods("POST")
+	protectedAPI.HandleFunc("/students/{id}", studentHandler.UpdateStudent).Methods("PUT", "PATCH")
+	protectedAPI.HandleFunc("/students/{id}", studentHandler.DeleteStudent).Methods("DELETE")
 
-	// GET /api/students - доступен всем аутентифицированным пользователям
-	studentsRouter := api.PathPrefix("/students").Subrouter()
-	studentsRouter.HandleFunc("", studentHandler.GetStudents).Methods("GET")
-
-	// Создаем отдельный роутер для операций, требующих роли админа
-	// Для этого используем отдельные обработчики или встроенную проверку в handlers
-
-	// POST /api/students - создание студента (только админ)
-	// Проверка прав будет в самом обработчике CreateStudent
-	studentsRouter.HandleFunc("", studentHandler.CreateStudent).Methods("POST")
-
-	// PUT/PATCH /api/students/{id} - обновление студента
-	// Проверка прав (админ, преподаватель или студент для своих данных) в обработчике
-	studentsRouter.HandleFunc("/{id}", studentHandler.UpdateStudent).Methods("PUT", "PATCH")
-
-	// DELETE /api/students/{id} - удаление студента (только админ)
-	// Проверка прав будет в самом обработчике DeleteStudent
-	studentsRouter.HandleFunc("/{id}", studentHandler.DeleteStudent).Methods("DELETE")
-
-	// Health check
+	// Публичные маршруты (без API префикса)
+	r.HandleFunc("/", rootHandler).Methods("GET")
 	r.HandleFunc("/health", healthHandler(db)).Methods("GET")
 
-	// OPTIONS handlers
+	// OPTIONS handlers для всех маршрутов
 	r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
 		w.WriteHeader(http.StatusOK)
 	})
 }
-
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	html := `
