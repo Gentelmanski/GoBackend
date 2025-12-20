@@ -51,6 +51,7 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 	// Параметры фильтрации
 	nameFilter := r.URL.Query().Get("name")
 	surnameFilter := r.URL.Query().Get("surname")
+	emailFilter := r.URL.Query().Get("email")
 
 	// Создаем запрос с GORM
 	query := h.db.Model(&models.Student{})
@@ -66,16 +67,21 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("surname ILIKE ?", "%"+cleanSurname+"%")
 	}
 
-	// Если пользователь - студент, показываем только его данные
-	if claims.Role == models.RoleStudent {
-		var student models.Student
-		if err := h.db.Where("user_id = ?", claims.UserID).First(&student).Error; err == nil {
-			query = query.Where("id = ?", student.ID)
-		} else {
-			// Если у студента нет записи, показываем пустой список
-			query = query.Where("1 = 0")
-		}
+	// Фильтр по email
+	if emailFilter != "" {
+		cleanEmail := strings.Trim(emailFilter, "*")
+		query = query.Where("email ILIKE ?", "%"+cleanEmail+"%")
 	}
+	// Если пользователь - студент, показываем только его данные
+	// if claims.Role == models.RoleStudent {
+	// 	var student models.Student
+	// 	if err := h.db.Where("user_id = ?", claims.UserID).First(&student).Error; err == nil {
+	// 		query = query.Where("id = ?", student.ID)
+	// 	} else {
+	// 		// Если у студента нет записи, показываем пустой список
+	// 		query = query.Where("1 = 0")
+	// 	}
+	// }
 
 	// Получаем общее количество
 	var totalItems int64

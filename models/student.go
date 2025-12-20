@@ -10,7 +10,7 @@ type Student struct {
 	ID        uint           `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name      string         `json:"name" gorm:"size:100;not null"`
 	Surname   string         `json:"surname" gorm:"size:100;not null"`
-	Email     string         `json:"email,omitempty" gorm:"size:255"`
+	Email     string         `json:"email" gorm:"size:255"` // Убрали omitempty
 	GroupID   *uint          `json:"group_id,omitempty"`
 	Group     *Group         `json:"group,omitempty" gorm:"foreignKey:GroupID"`
 	UserID    *uint          `json:"user_id,omitempty" gorm:"unique"`
