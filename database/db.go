@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"student-backend/config"
-	"student-backend/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -20,12 +19,6 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	// Автомиграция - создаст таблицу если её нет
-	err = db.AutoMigrate(&models.Student{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to auto-migrate: %w", err)
 	}
 
 	log.Println("✅ Successfully connected to PostgreSQL with GORM!")

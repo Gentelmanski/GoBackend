@@ -28,11 +28,6 @@ func main() {
 		log.Fatal("❌ Error initializing database:", err)
 	}
 
-	// Выполняем миграции
-	if err := database.Migrate(db); err != nil {
-		log.Fatal("❌ Error migrating database:", err)
-	}
-
 	// Получаем низкоуровневое соединение для закрытия
 	sqlDB, err := db.DB()
 	if err != nil {
