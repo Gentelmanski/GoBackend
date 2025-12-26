@@ -44,6 +44,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db, jwtService)
 	studentHandler := handlers.NewStudentHandler(db)
 	teacherHandler := handlers.NewTeacherHandler(db)
+	groupHandler := handlers.NewGroupHandler(db)
 
 	// Создание роутера
 	r := mux.NewRouter()
@@ -53,7 +54,7 @@ func main() {
 	r.Use(loggingMiddleware)
 
 	// Маршруты
-	setupRoutes(r, authHandler, studentHandler, teacherHandler, authMiddleware)
+	setupRoutes(r, authHandler, studentHandler, teacherHandler, groupHandler, authMiddleware)
 
 	serverAddr := ":" + cfg.ServerPort
 	log.Printf("✅ Server successfully started on %s", serverAddr)
@@ -90,6 +91,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 	studentHandler *handlers.StudentHandler,
 	teacherHandler *handlers.TeacherHandler,
+	groupHandler *handlers.GroupHandler,
 	authMiddleware *middleware.AuthMiddleware) {
 
 	// Создаем отдельный роутер для API с middleware аутентификации
@@ -117,6 +119,11 @@ func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 	protectedAPI.HandleFunc("/teachers", teacherHandler.CreateTeacher).Methods("POST")
 	protectedAPI.HandleFunc("/teachers/{id}", teacherHandler.UpdateTeacher).Methods("PUT", "PATCH")
 	protectedAPI.HandleFunc("/teachers/{id}", teacherHandler.DeleteTeacher).Methods("DELETE")
+
+	protectedAPI.HandleFunc("/groups", groupHandler.GetGroups).Methods("GET")
+	protectedAPI.HandleFunc("/groups", groupHandler.CreateGroup).Methods("POST")
+	protectedAPI.HandleFunc("/groups/{id}", groupHandler.UpdateGroup).Methods("PUT", "PATCH")
+	protectedAPI.HandleFunc("/groups/{id}", groupHandler.DeleteGroup).Methods("DELETE")
 
 	// Публичные маршруты (без API префикса)
 	r.HandleFunc("/", rootHandler).Methods("GET")
