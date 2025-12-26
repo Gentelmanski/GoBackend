@@ -21,3 +21,9 @@ type Teacher struct {
 func (Teacher) TableName() string {
 	return "teachers"
 }
+
+// Структура для пагинации преподавателей
+type TeacherPaginatedResponse struct {
+	Meta  Meta      `json:"meta"`
+	Items []Teacher `json:"items"`
+}

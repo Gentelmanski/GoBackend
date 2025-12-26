@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"gorm.io/gorm"
 )
 
 func main() {
@@ -44,6 +43,7 @@ func main() {
 	// Инициализация обработчиков
 	authHandler := handlers.NewAuthHandler(db, jwtService)
 	studentHandler := handlers.NewStudentHandler(db)
+	teacherHandler := handlers.NewTeacherHandler(db)
 
 	// Создание роутера
 	r := mux.NewRouter()
@@ -53,7 +53,7 @@ func main() {
 	r.Use(loggingMiddleware)
 
 	// Маршруты
-	setupRoutes(r, authHandler, studentHandler, db, authMiddleware)
+	setupRoutes(r, authHandler, studentHandler, teacherHandler, authMiddleware)
 
 	serverAddr := ":" + cfg.ServerPort
 	log.Printf("✅ Server successfully started on %s", serverAddr)
@@ -61,7 +61,6 @@ func main() {
 	log.Printf("🔐 JWT Expiry: %d hours", cfg.JWTExpiry)
 
 	log.Fatal(http.ListenAndServe(serverAddr, r))
-
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -87,8 +86,10 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
+
 func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
-	studentHandler *handlers.StudentHandler, db *gorm.DB,
+	studentHandler *handlers.StudentHandler,
+	teacherHandler *handlers.TeacherHandler,
 	authMiddleware *middleware.AuthMiddleware) {
 
 	// Создаем отдельный роутер для API с middleware аутентификации
@@ -111,9 +112,15 @@ func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 	protectedAPI.HandleFunc("/students/{id}", studentHandler.UpdateStudent).Methods("PUT", "PATCH")
 	protectedAPI.HandleFunc("/students/{id}", studentHandler.DeleteStudent).Methods("DELETE")
 
+	// Преподаватели - ТОЛЬКО для админа
+	protectedAPI.HandleFunc("/teachers", teacherHandler.GetTeachers).Methods("GET")
+	protectedAPI.HandleFunc("/teachers", teacherHandler.CreateTeacher).Methods("POST")
+	protectedAPI.HandleFunc("/teachers/{id}", teacherHandler.UpdateTeacher).Methods("PUT", "PATCH")
+	protectedAPI.HandleFunc("/teachers/{id}", teacherHandler.DeleteTeacher).Methods("DELETE")
+
 	// Публичные маршруты (без API префикса)
 	r.HandleFunc("/", rootHandler).Methods("GET")
-	r.HandleFunc("/health", healthHandler(db)).Methods("GET")
+	r.HandleFunc("/health", healthHandler).Methods("GET")
 
 	// OPTIONS handlers для всех маршрутов
 	r.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +130,7 @@ func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 		w.WriteHeader(http.StatusOK)
 	})
 }
+
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	html := `
@@ -198,6 +206,10 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
                 <li><code>POST /api/students</code> - Create student (Admin only)</li>
                 <li><code>PUT/PATCH /api/students/{id}</code> - Update student</li>
                 <li><code>DELETE /api/students/{id}</code> - Delete student (Admin only)</li>
+                <li><code>GET /api/teachers</code> - Get teachers (Admin only)</li>
+                <li><code>POST /api/teachers</code> - Create teacher (Admin only)</li>
+                <li><code>PUT/PATCH /api/teachers/{id}</code> - Update teacher (Admin only)</li>
+                <li><code>DELETE /api/teachers/{id}</code> - Delete teacher (Admin only)</li>
             </ul>
         </div>
         <p>Default admin: <code>admin@example.com</code> / <code>admin123</code></p>
@@ -207,30 +219,16 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-func healthHandler(db *gorm.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-		sqlDB, err := db.DB()
-		dbStatus := "connected"
-		if err != nil {
-			dbStatus = "error"
-		} else {
-			if err := sqlDB.Ping(); err != nil {
-				dbStatus = "disconnected"
-				log.Printf("❌ Database ping failed: %v", err)
-			}
-		}
-
-		response := map[string]interface{}{
-			"status":    "ok",
-			"service":   "student-backend",
-			"orm":       "GORM",
-			"database":  dbStatus,
-			"auth":      "JWT",
-			"timestamp": time.Now().Format(time.RFC3339),
-		}
-
-		json.NewEncoder(w).Encode(response)
+	response := map[string]interface{}{
+		"status":    "ok",
+		"service":   "student-backend",
+		"orm":       "GORM",
+		"auth":      "JWT",
+		"timestamp": time.Now().Format(time.RFC3339),
 	}
+
+	json.NewEncoder(w).Encode(response)
 }
