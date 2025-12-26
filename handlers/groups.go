@@ -105,7 +105,7 @@ func (h *GroupHandler) GetGroups(w http.ResponseWriter, r *http.Request) {
 			PerPage:        limit,
 			RemainingCount: remainingCount,
 		},
-		//Items: groups,
+		Items: groups,
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {

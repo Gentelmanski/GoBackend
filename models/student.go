@@ -24,8 +24,8 @@ func (Student) TableName() string {
 }
 
 type PaginatedResponse struct {
-	Meta  Meta      `json:"meta"`
-	Items []Student `json:"items"`
+	Meta  Meta        `json:"meta"`
+	Items interface{} `json:"items"`
 }
 
 type Meta struct {

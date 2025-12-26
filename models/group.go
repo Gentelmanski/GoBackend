@@ -1,3 +1,4 @@
+// models/group.go или models/common.go
 package models
 
 import (
@@ -14,8 +15,4 @@ type Group struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
-}
-
-func (Group) TableName() string {
-	return "groups"
 }
