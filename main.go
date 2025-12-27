@@ -136,6 +136,9 @@ func setupRoutes(r *mux.Router, authHandler *handlers.AuthHandler,
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
 		w.WriteHeader(http.StatusOK)
 	})
+
+	protectedAPI.HandleFunc("/groups/all", groupHandler.GetAllGroups).Methods("GET")
+
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {

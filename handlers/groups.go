@@ -320,3 +320,24 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Group deleted successfully. Rows affected: %d", result.RowsAffected)
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *GroupHandler) GetAllGroups(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	claims := middleware.GetUserClaims(r.Context())
+	if claims == nil {
+		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
+		return
+	}
+
+	var groups []models.Group
+	if err := h.db.Order("name ASC").Find(&groups).Error; err != nil {
+		log.Printf("❌ Error fetching all groups: %v", err)
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(groups); err != nil {
+		log.Printf("❌ Error encoding response: %v", err)
+	}
+}
