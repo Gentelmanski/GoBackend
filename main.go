@@ -15,22 +15,22 @@ import (
 )
 
 func main() {
-	log.Println("🚀 Starting Student Backend Server with Authentication...")
+	log.Println(" Starting Student Backend Server with Authentication...")
 
 	// Загрузка конфигурации
 	cfg := config.Load()
-	log.Printf("📋 Configuration loaded: Server Port %s", cfg.ServerPort)
+	log.Printf(" Configuration loaded: Server Port %s", cfg.ServerPort)
 
 	// Инициализация подключения к базе данных
 	db, err := database.InitDB(cfg)
 	if err != nil {
-		log.Fatal("❌ Error initializing database:", err)
+		log.Fatal(" Error initializing database:", err)
 	}
 
 	// Получаем низкоуровневое соединение для закрытия
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatal("❌ Error getting SQL DB:", err)
+		log.Fatal(" Error getting SQL DB:", err)
 	}
 	defer sqlDB.Close()
 
@@ -57,9 +57,9 @@ func main() {
 	setupRoutes(r, authHandler, studentHandler, teacherHandler, groupHandler, authMiddleware)
 
 	serverAddr := ":" + cfg.ServerPort
-	log.Printf("✅ Server successfully started on %s", serverAddr)
-	log.Printf("🌐 Available at: http://localhost%s", serverAddr)
-	log.Printf("🔐 JWT Expiry: %d hours", cfg.JWTExpiry)
+	log.Printf(" Server successfully started on %s", serverAddr)
+	log.Printf(" Available at: http://localhost%s", serverAddr)
+	log.Printf(" JWT Expiry: %d hours", cfg.JWTExpiry)
 
 	log.Fatal(http.ListenAndServe(serverAddr, r))
 }

@@ -15,7 +15,7 @@ func CORS(next http.Handler) http.Handler {
 
 		// Обрабатываем preflight OPTIONS запросы
 		if r.Method == "OPTIONS" {
-			log.Printf("🔄 Handling OPTIONS preflight request for %s", r.URL.Path)
+			log.Printf(" Handling OPTIONS preflight request for %s", r.URL.Path)
 			w.WriteHeader(http.StatusOK)
 			return
 		}

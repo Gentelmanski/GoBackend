@@ -32,7 +32,7 @@ func (h *GroupHandler) GetGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to access groups without permission",
+		log.Printf("User %s (role: %s) tried to access groups without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
@@ -68,7 +68,7 @@ func (h *GroupHandler) GetGroups(w http.ResponseWriter, r *http.Request) {
 
 	var totalItems int64
 	if err := query.Count(&totalItems).Error; err != nil {
-		log.Printf("❌ Error counting groups: %v", err)
+		log.Printf("Error counting groups: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -86,7 +86,7 @@ func (h *GroupHandler) GetGroups(w http.ResponseWriter, r *http.Request) {
 
 	var groups []models.Group
 	if err := query.Offset(offset).Limit(limit).Find(&groups).Error; err != nil {
-		log.Printf("❌ Error fetching groups: %v", err)
+		log.Printf("Error fetching groups: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -109,7 +109,7 @@ func (h *GroupHandler) GetGroups(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf("Error encoding response: %v", err)
 	}
 }
 
@@ -123,7 +123,7 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to create group without permission",
+		log.Printf("User %s (role: %s) tried to create group without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
@@ -136,30 +136,30 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("❌ Error reading request body: %v", err)
+		log.Printf("Error reading request body: %v", err)
 		http.Error(w, `{"error": "Cannot read request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📝 Request body: %s", string(body))
+	log.Printf("Request body: %s", string(body))
 
 	if err := json.Unmarshal(body, &createReq); err != nil {
-		log.Printf("❌ Error decoding JSON: %v", err)
+		log.Printf("Error decoding JSON: %v", err)
 		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("➕ Creating group: Name='%s', Code='%s'", createReq.Name, createReq.Code)
+	log.Printf("Creating group: Name='%s', Code='%s'", createReq.Name, createReq.Code)
 
 	if createReq.Name == "" || createReq.Code == "" {
-		log.Printf("❌ Validation failed: Name and Code are required")
+		log.Printf("Validation failed: Name and Code are required")
 		http.Error(w, `{"error": "Name and code are required"}`, http.StatusBadRequest)
 		return
 	}
 
 	var existingGroup models.Group
 	if err := h.db.Where("code = ?", createReq.Code).First(&existingGroup).Error; err == nil {
-		log.Printf("❌ Group with code %s already exists", createReq.Code)
+		log.Printf("Group with code %s already exists", createReq.Code)
 		http.Error(w, `{"error": "Group with this code already exists"}`, http.StatusConflict)
 		return
 	}
@@ -171,16 +171,16 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	result := h.db.Create(&group)
 	if result.Error != nil {
-		log.Printf("❌ Database error creating group: %v", result.Error)
+		log.Printf("Database error creating group: %v", result.Error)
 		http.Error(w, `{"error": "Failed to create group in database"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Group created successfully with ID: %d", group.ID)
+	log.Printf("Group created successfully with ID: %d", group.ID)
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(group); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf("Error encoding response: %v", err)
 	}
 }
 
@@ -194,7 +194,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to update group without permission",
+		log.Printf("User %s (role: %s) tried to update group without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
@@ -203,12 +203,12 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		log.Printf("❌ Error converting id to int: %v", err)
+		log.Printf("Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid group ID"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("🔄 Updating group with ID: %d (by admin %s)", id, claims.Email)
+	log.Printf("Updating group with ID: %d (by admin %s)", id, claims.Email)
 
 	var updateReq struct {
 		Name string `json:"name"`
@@ -216,15 +216,15 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
-		log.Printf("❌ Error decoding request body: %v", err)
+		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📝 Update data - Name: '%s', Code: '%s'", updateReq.Name, updateReq.Code)
+	log.Printf("Update data - Name: '%s', Code: '%s'", updateReq.Name, updateReq.Code)
 
 	if updateReq.Name == "" || updateReq.Code == "" {
-		log.Printf("❌ Validation failed: Name and Code are required")
+		log.Printf("Validation failed: Name and Code are required")
 		http.Error(w, `{"error": "Name and code are required"}`, http.StatusBadRequest)
 		return
 	}
@@ -233,11 +233,11 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	result := h.db.First(&existingGroup, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			log.Printf("❌ Group with ID %d not found", id)
+			log.Printf("Group with ID %d not found", id)
 			http.Error(w, `{"error": "Group not found"}`, http.StatusNotFound)
 			return
 		}
-		log.Printf("❌ Error checking group existence: %v", result.Error)
+		log.Printf("Error checking group existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -245,7 +245,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if updateReq.Code != existingGroup.Code {
 		var groupWithSameCode models.Group
 		if err := h.db.Where("code = ? AND id != ?", updateReq.Code, id).First(&groupWithSameCode).Error; err == nil {
-			log.Printf("❌ Code %s already used by another group", updateReq.Code)
+			log.Printf("Code %s already used by another group", updateReq.Code)
 			http.Error(w, `{"error": "Code already in use by another group"}`, http.StatusConflict)
 			return
 		}
@@ -256,18 +256,18 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 
 	result = h.db.Save(&existingGroup)
 	if result.Error != nil {
-		log.Printf("❌ Error updating group in database: %v", result.Error)
+		log.Printf("Error updating group in database: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Group updated successfully. Rows affected: %d", result.RowsAffected)
+	log.Printf("Group updated successfully. Rows affected: %d", result.RowsAffected)
 
 	var updatedGroup models.Group
 	h.db.First(&updatedGroup, id)
 
 	if err := json.NewEncoder(w).Encode(updatedGroup); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf("Error encoding response: %v", err)
 	}
 }
 
@@ -281,7 +281,7 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to delete group without permission",
+		log.Printf("User %s (role: %s) tried to delete group without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
@@ -290,33 +290,33 @@ func (h *GroupHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		log.Printf("❌ Error converting id to int: %v", err)
+		log.Printf("Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid group ID"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("🗑️ Deleting group with ID: %d (by admin %s)", id, claims.Email)
+	log.Printf("Deleting group with ID: %d (by admin %s)", id, claims.Email)
 
 	var group models.Group
 	result := h.db.First(&group, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			log.Printf("❌ Group with ID %d not found", id)
+			log.Printf("Group with ID %d not found", id)
 			http.Error(w, `{"error": "Group not found"}`, http.StatusNotFound)
 			return
 		}
-		log.Printf("❌ Error checking group existence: %v", result.Error)
+		log.Printf("Error checking group existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
 	result = h.db.Delete(&group)
 	if result.Error != nil {
-		log.Printf("❌ Error deleting group: %v", result.Error)
+		log.Printf("Error deleting group: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Group deleted successfully. Rows affected: %d", result.RowsAffected)
+	log.Printf("Group deleted successfully. Rows affected: %d", result.RowsAffected)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -21,7 +21,7 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	log.Println("✅ Successfully connected to PostgreSQL with GORM!")
+	log.Println("Successfully connected to PostgreSQL with GORM!")
 	return db, nil
 }
 

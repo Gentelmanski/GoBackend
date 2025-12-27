@@ -65,7 +65,7 @@ func (j *JWTService) GenerateToken(user *models.User) (string, error) {
 
 	tokenString, err := token.SignedString([]byte(j.secretKey))
 	if err != nil {
-		log.Printf("❌ Error generating token: %v", err)
+		log.Printf("Error generating token: %v", err)
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 

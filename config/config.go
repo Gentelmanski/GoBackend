@@ -20,7 +20,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnvAsInt("DB_PORT", 5432), // Исправлено: getIntEnv -> getEnvAsInt
+		DBPort:     getEnvAsInt("DB_PORT", 5432),
 		DBUser:     getEnv("DB_USER", "max"),
 		DBPassword: getEnv("DB_PASSWORD", "123456"),
 		DBName:     getEnv("DB_NAME", "students_db"),

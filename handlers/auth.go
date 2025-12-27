@@ -29,7 +29,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var loginReq models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
-		log.Printf("❌ Error decoding login request: %v", err)
+		log.Printf(" Error decoding login request: %v", err)
 		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
 		return
 	}
@@ -38,14 +38,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	result := h.db.Where("email = ?", loginReq.Email).First(&user)
 	if result.Error != nil {
-		log.Printf("❌ User not found: %s", loginReq.Email)
+		log.Printf("User not found: %s", loginReq.Email)
 		http.Error(w, `{"error": "Invalid email or password"}`, http.StatusUnauthorized)
 		return
 	}
 
 	// Проверяем пароль
 	if !auth.CheckPassword(loginReq.Password, user.Password) {
-		log.Printf("❌ Invalid password for user: %s", loginReq.Email)
+		log.Printf("Invalid password for user: %s", loginReq.Email)
 		http.Error(w, `{"error": "Invalid email or password"}`, http.StatusUnauthorized)
 		return
 	}
@@ -53,7 +53,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Генерируем токен
 	token, err := h.jwtService.GenerateToken(&user)
 	if err != nil {
-		log.Printf("❌ Error generating token for user %s: %v", user.Email, err)
+		log.Printf("Error generating token for user %s: %v", user.Email, err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -66,7 +66,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		User:  user,
 	}
 
-	log.Printf("✅ User logged in successfully: %s (role: %s)", user.Email, user.Role)
+	log.Printf("User logged in successfully: %s (role: %s)", user.Email, user.Role)
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -76,7 +76,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	var registerReq models.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&registerReq); err != nil {
-		log.Printf("❌ Error decoding register request: %v", err)
+		log.Printf("Error decoding register request: %v", err)
 		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
 		return
 	}
@@ -84,7 +84,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Проверяем, существует ли пользователь
 	var existingUser models.User
 	if err := h.db.Where("email = ?", registerReq.Email).First(&existingUser).Error; err == nil {
-		log.Printf("❌ User already exists: %s", registerReq.Email)
+		log.Printf("User already exists: %s", registerReq.Email)
 		http.Error(w, `{"error": "User with this email already exists"}`, http.StatusConflict)
 		return
 	}
@@ -92,7 +92,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Хэшируем пароль
 	hashedPassword, err := auth.HashPassword(registerReq.Password)
 	if err != nil {
-		log.Printf("❌ Error hashing password: %v", err)
+		log.Printf("Error hashing password: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -114,7 +114,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Surname: "Student",
 		}
 		if err := h.db.Create(&student).Error; err != nil {
-			log.Printf("❌ Error creating student: %v", err)
+			log.Printf("Error creating student: %v", err)
 			http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 			return
 		}
@@ -128,7 +128,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Surname: "Teacher",
 		}
 		if err := h.db.Create(&teacher).Error; err != nil {
-			log.Printf("❌ Error creating teacher: %v", err)
+			log.Printf(" Error creating teacher: %v", err)
 			http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 			return
 		}
@@ -137,7 +137,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Сохраняем пользователя
 	if err := h.db.Create(&user).Error; err != nil {
-		log.Printf("❌ Error creating user: %v", err)
+		log.Printf(" Error creating user: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -153,7 +153,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Генерируем токен
 	token, err := h.jwtService.GenerateToken(&user)
 	if err != nil {
-		log.Printf("❌ Error generating token: %v", err)
+		log.Printf(" Error generating token: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -166,7 +166,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		User:  user,
 	}
 
-	log.Printf("✅ User registered successfully: %s (role: %s)", user.Email, user.Role)
+	log.Printf("User registered successfully: %s (role: %s)", user.Email, user.Role)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
 }
@@ -185,7 +185,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	// Получаем полную информацию о пользователе
 	var user models.User
 	if err := h.db.Preload("Student").Preload("Teacher").First(&user, claims.UserID).Error; err != nil {
-		log.Printf("❌ Error fetching user: %v", err)
+		log.Printf("Error fetching user: %v", err)
 		http.Error(w, `{"error": "User not found"}`, http.StatusNotFound)
 		return
 	}

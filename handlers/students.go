@@ -86,7 +86,7 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 	// Получаем общее количество
 	var totalItems int64
 	if err := query.Count(&totalItems).Error; err != nil {
-		log.Printf("❌ Error counting students: %v", err)
+		log.Printf(" Error counting students: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -106,7 +106,7 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 	// Применяем пагинацию
 	var students []models.Student
 	if err := query.Offset(offset).Limit(limit).Find(&students).Error; err != nil {
-		log.Printf("❌ Error fetching students: %v", err)
+		log.Printf(" Error fetching students: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -129,7 +129,7 @@ func (h *StudentHandler) GetStudents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf(" Error encoding response: %v", err)
 	}
 }
 
@@ -144,36 +144,36 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to create student without permission",
+		log.Printf(" User %s (role: %s) tried to create student without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
 	}
 
-	log.Printf("📨 POST /api/students - Content-Type: %s, Content-Length: %d",
+	log.Printf(" POST /api/students - Content-Type: %s, Content-Length: %d",
 		r.Header.Get("Content-Type"), r.ContentLength)
 
 	var student models.Student
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		log.Printf("❌ Error reading request body: %v", err)
+		log.Printf(" Error reading request body: %v", err)
 		http.Error(w, `{"error": "Cannot read request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📝 Request body: %s", string(body))
+	log.Printf(" Request body: %s", string(body))
 
 	if err := json.Unmarshal(body, &student); err != nil {
-		log.Printf("❌ Error decoding JSON: %v", err)
+		log.Printf(" Error decoding JSON: %v", err)
 		http.Error(w, `{"error": "Invalid JSON format"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("➕ Creating student: Name='%s', Surname='%s'", student.Name, student.Surname)
+	log.Printf(" Creating student: Name='%s', Surname='%s'", student.Name, student.Surname)
 
 	// Валидация
 	if student.Name == "" || student.Surname == "" {
-		log.Printf("❌ Validation failed: Name or Surname is empty")
+		log.Printf(" Validation failed: Name or Surname is empty")
 		http.Error(w, `{"error": "Name and surname are required"}`, http.StatusBadRequest)
 		return
 	}
@@ -181,16 +181,16 @@ func (h *StudentHandler) CreateStudent(w http.ResponseWriter, r *http.Request) {
 	// Создаем студента с GORM
 	result := h.db.Create(&student)
 	if result.Error != nil {
-		log.Printf("❌ Database error creating student: %v", result.Error)
+		log.Printf(" Database error creating student: %v", result.Error)
 		http.Error(w, `{"error": "Failed to create student in database"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Student created successfully with ID: %d", student.ID)
+	log.Printf("Student created successfully with ID: %d", student.ID)
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(student); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf(" Error encoding response: %v", err)
 	}
 }
 
@@ -207,7 +207,7 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		log.Printf("❌ Error converting id to int: %v", err)
+		log.Printf(" Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid student ID"}`, http.StatusBadRequest)
 		return
 	}
@@ -217,13 +217,13 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 		// Студент может редактировать только свою запись
 		var userStudent models.Student
 		if err := h.db.Where("user_id = ?", claims.UserID).First(&userStudent).Error; err != nil {
-			log.Printf("❌ Student %s doesn't have a student record", claims.Email)
+			log.Printf("Student %s doesn't have a student record", claims.Email)
 			http.Error(w, `{"error": "Student record not found"}`, http.StatusForbidden)
 			return
 		}
 
 		if uint(id) != userStudent.ID {
-			log.Printf("❌ Student %s tried to edit another student's data (ID: %d)",
+			log.Printf(" Student %s tried to edit another student's data (ID: %d)",
 				claims.Email, id)
 			http.Error(w, `{"error": "Can only edit your own data"}`, http.StatusForbidden)
 			return
@@ -234,16 +234,16 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 
 	var student models.Student
 	if err := json.NewDecoder(r.Body).Decode(&student); err != nil {
-		log.Printf("❌ Error decoding request body: %v", err)
+		log.Printf(" Error decoding request body: %v", err)
 		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📝 Update data - Name: '%s', Surname: '%s'", student.Name, student.Surname)
+	log.Printf(" Update data - Name: '%s', Surname: '%s'", student.Name, student.Surname)
 
 	// Валидация
 	if student.Name == "" || student.Surname == "" {
-		log.Printf("❌ Validation failed: Name or Surname is empty")
+		log.Printf(" Validation failed: Name or Surname is empty")
 		http.Error(w, `{"error": "Name and surname are required"}`, http.StatusBadRequest)
 		return
 	}
@@ -253,11 +253,11 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	result := h.db.First(&existingStudent, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			log.Printf("❌ Student with ID %d not found", id)
+			log.Printf(" Student with ID %d not found", id)
 			http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
 			return
 		}
-		log.Printf("❌ Error checking student existence: %v", result.Error)
+		log.Printf(" Error checking student existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -270,19 +270,19 @@ func (h *StudentHandler) UpdateStudent(w http.ResponseWriter, r *http.Request) {
 
 	result = h.db.Model(&existingStudent).Updates(updateData)
 	if result.Error != nil {
-		log.Printf("❌ Error updating student in database: %v", result.Error)
+		log.Printf(" Error updating student in database: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Student updated successfully. Rows affected: %d", result.RowsAffected)
+	log.Printf(" Student updated successfully. Rows affected: %d", result.RowsAffected)
 
 	// Получаем обновленного студента
 	var updatedStudent models.Student
 	h.db.First(&updatedStudent, id)
 
 	if err := json.NewEncoder(w).Encode(updatedStudent); err != nil {
-		log.Printf("❌ Error encoding response: %v", err)
+		log.Printf("Error encoding response: %v", err)
 	}
 }
 
@@ -297,7 +297,7 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf("❌ User %s (role: %s) tried to delete student without permission",
+		log.Printf("User %s (role: %s) tried to delete student without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
@@ -306,7 +306,7 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		log.Printf("❌ Error converting id to int: %v", err)
+		log.Printf(" Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid student ID"}`, http.StatusBadRequest)
 		return
 	}
@@ -318,11 +318,11 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	result := h.db.First(&student, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			log.Printf("❌ Student with ID %d not found", id)
+			log.Printf(" Student with ID %d not found", id)
 			http.Error(w, `{"error": "Student not found"}`, http.StatusNotFound)
 			return
 		}
-		log.Printf("❌ Error checking student existence: %v", result.Error)
+		log.Printf("Error checking student existence: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
@@ -330,11 +330,11 @@ func (h *StudentHandler) DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	// Удаляем студента с GORM
 	result = h.db.Delete(&student)
 	if result.Error != nil {
-		log.Printf("❌ Error deleting student: %v", result.Error)
+		log.Printf(" Error deleting student: %v", result.Error)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("✅ Student deleted successfully. Rows affected: %d", result.RowsAffected)
+	log.Printf(" Student deleted successfully. Rows affected: %d", result.RowsAffected)
 	w.WriteHeader(http.StatusNoContent)
 }
