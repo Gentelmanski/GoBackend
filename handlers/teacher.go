@@ -25,22 +25,19 @@ func NewTeacherHandler(db *gorm.DB) *TeacherHandler {
 func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Получаем информацию о текущем пользователе
 	claims := middleware.GetUserClaims(r.Context())
 	if claims == nil {
 		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Только админ может видеть список преподавателей
 	if claims.Role != models.RoleAdmin {
-		log.Printf(" User %s (role: %s) tried to access teachers without permission",
+		log.Printf("❌ User %s (role: %s) tried to access teachers without permission",
 			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
 	}
 
-	// Параметры пагинации
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
@@ -53,18 +50,14 @@ func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 
 	offset := (page - 1) * limit
 
-	// Параметры сортировки
 	sortBy := r.URL.Query().Get("sortBy")
-
-	// Параметры фильтрации
 	nameFilter := r.URL.Query().Get("name")
 	surnameFilter := r.URL.Query().Get("surname")
 	emailFilter := r.URL.Query().Get("email")
 
-	// Создаем запрос с GORM
+	// Создаем базовый запрос
 	query := h.db.Model(&models.Teacher{})
 
-	// Применяем фильтрацию
 	if nameFilter != "" {
 		cleanName := strings.Trim(nameFilter, "*")
 		query = query.Where("name ILIKE ?", "%"+cleanName+"%")
@@ -80,15 +73,14 @@ func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("email ILIKE ?", "%"+cleanEmail+"%")
 	}
 
-	// Получаем общее количество
 	var totalItems int64
 	if err := query.Count(&totalItems).Error; err != nil {
-		log.Printf(" Error counting teachers: %v", err)
+		log.Printf("❌ Error counting teachers: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Применяем сортировки
+	// Сортируем и применяем пагинацию
 	if sortBy != "" {
 		if strings.HasPrefix(sortBy, "-") {
 			field := strings.TrimPrefix(sortBy, "-")
@@ -100,12 +92,18 @@ func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 		query = query.Order("id ASC")
 	}
 
-	// Применяем пагинацию
 	var teachers []models.Teacher
 	if err := query.Offset(offset).Limit(limit).Find(&teachers).Error; err != nil {
-		log.Printf(" Error fetching teachers: %v", err)
+		log.Printf("❌ Error fetching teachers: %v", err)
 		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
 		return
+	}
+
+	// Загружаем группы для каждого преподавателя отдельно
+	for i := range teachers {
+		if err := h.db.Model(&teachers[i]).Association("Groups").Find(&teachers[i].Groups); err != nil {
+			log.Printf("❌ Error loading groups for teacher %d: %v", teachers[i].ID, err)
+		}
 	}
 
 	totalPages := (int(totalItems) + limit - 1) / limit
@@ -114,11 +112,7 @@ func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 		remainingCount = 0
 	}
 
-	// Создаем отдельную структуру для ответа с преподавателями
-	response := struct {
-		Meta  models.Meta      `json:"meta"`
-		Items []models.Teacher `json:"items"`
-	}{
+	response := models.PaginatedResponse{
 		Meta: models.Meta{
 			TotalItems:     int(totalItems),
 			TotalPages:     totalPages,
@@ -130,7 +124,7 @@ func (h *TeacherHandler) GetTeachers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf(" Error encoding response: %v", err)
+		log.Printf("❌ Error encoding response: %v", err)
 	}
 }
 
@@ -220,7 +214,6 @@ func (h *TeacherHandler) CreateTeacher(w http.ResponseWriter, r *http.Request) {
 func (h *TeacherHandler) UpdateTeacher(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Проверяем права - только админ может обновлять преподавателей
 	claims := middleware.GetUserClaims(r.Context())
 	if claims == nil {
 		http.Error(w, `{"error": "Not authenticated"}`, http.StatusUnauthorized)
@@ -228,8 +221,6 @@ func (h *TeacherHandler) UpdateTeacher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if claims.Role != models.RoleAdmin {
-		log.Printf(" User %s (role: %s) tried to update teacher without permission",
-			claims.Email, claims.Role)
 		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
 		return
 	}
@@ -237,81 +228,83 @@ func (h *TeacherHandler) UpdateTeacher(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		log.Printf(" Error converting id to int: %v", err)
+		log.Printf("❌ Error converting id to int: %v", err)
 		http.Error(w, `{"error": "Invalid teacher ID"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Updating teacher with ID: %d (by admin %s)", id, claims.Email)
+	var teacher models.Teacher
+	result := h.db.Preload("Groups").First(&teacher, id)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			http.Error(w, `{"error": "Teacher not found"}`, http.StatusNotFound)
+			return
+		}
+		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
 
 	var updateReq struct {
-		Name    string `json:"name"`
-		Surname string `json:"surname"`
-		Email   string `json:"email"`
-		Phone   string `json:"phone"`
+		Name    string         `json:"name"`
+		Surname string         `json:"surname"`
+		Email   string         `json:"email"`
+		Phone   string         `json:"phone"`
+		Groups  []models.Group `json:"groups"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&updateReq); err != nil {
-		log.Printf(" Error decoding request body: %v", err)
+		log.Printf("❌ Error decoding request body: %v", err)
 		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 
-	log.Printf(" Update data - Name: '%s', Surname: '%s', Email: '%s', Phone: '%s'",
-		updateReq.Name, updateReq.Surname, updateReq.Email, updateReq.Phone)
+	// Обновляем основные поля
+	teacher.Name = updateReq.Name
+	teacher.Surname = updateReq.Surname
+	teacher.Email = updateReq.Email
+	teacher.Phone = updateReq.Phone
 
-	// Валидация
-	if updateReq.Name == "" || updateReq.Surname == "" || updateReq.Email == "" {
-		log.Printf(" Validation failed: Name, Surname and Email are required")
-		http.Error(w, `{"error": "Name, surname and email are required"}`, http.StatusBadRequest)
-		return
-	}
+	// Обновляем связи с группами
+	if updateReq.Groups != nil {
+		// Получаем ID групп из запроса
+		var groupIDs []uint
+		for _, group := range updateReq.Groups {
+			if group.ID > 0 {
+				groupIDs = append(groupIDs, group.ID)
+			}
+		}
 
-	// Проверяем существование преподавателя
-	var existingTeacher models.Teacher
-	result := h.db.First(&existingTeacher, id)
-	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			log.Printf(" Teacher with ID %d not found", id)
-			http.Error(w, `{"error": "Teacher not found"}`, http.StatusNotFound)
+		// Находим группы по ID
+		var groups []models.Group
+		if len(groupIDs) > 0 {
+			if err := h.db.Where("id IN ?", groupIDs).Find(&groups).Error; err != nil {
+				log.Printf("❌ Error finding groups: %v", err)
+				http.Error(w, `{"error": "Invalid group IDs"}`, http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Обновляем связи
+		if err := h.db.Model(&teacher).Association("Groups").Replace(&groups); err != nil {
+			log.Printf("❌ Error updating teacher groups: %v", err)
+			http.Error(w, `{"error": "Failed to update groups"}`, http.StatusInternalServerError)
 			return
 		}
-		log.Printf("Error checking teacher existence: %v", result.Error)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
+	}
+
+	// Сохраняем изменения
+	if err := h.db.Save(&teacher).Error; err != nil {
+		log.Printf("❌ Error updating teacher: %v", err)
+		http.Error(w, `{"error": "Failed to update teacher"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// Проверяем, не используется ли email другим преподавателем
-	if updateReq.Email != existingTeacher.Email {
-		var teacherWithSameEmail models.Teacher
-		if err := h.db.Where("email = ? AND id != ?", updateReq.Email, id).First(&teacherWithSameEmail).Error; err == nil {
-			log.Printf(" Email %s already used by another teacher", updateReq.Email)
-			http.Error(w, `{"error": "Email already in use by another teacher"}`, http.StatusConflict)
-			return
-		}
-	}
+	// Подгружаем группы для ответа
+	h.db.Preload("Groups").First(&teacher, teacher.ID)
 
-	// Обновляем преподавателя
-	existingTeacher.Name = updateReq.Name
-	existingTeacher.Surname = updateReq.Surname
-	existingTeacher.Email = updateReq.Email
-	existingTeacher.Phone = updateReq.Phone
-
-	result = h.db.Save(&existingTeacher)
-	if result.Error != nil {
-		log.Printf(" Error updating teacher in database: %v", result.Error)
-		http.Error(w, `{"error": "Internal server error"}`, http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf(" Teacher updated successfully. Rows affected: %d", result.RowsAffected)
-
-	// Получаем обновленного преподавателя
-	var updatedTeacher models.Teacher
-	h.db.First(&updatedTeacher, id)
-
-	if err := json.NewEncoder(w).Encode(updatedTeacher); err != nil {
-		log.Printf(" Error encoding response: %v", err)
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(teacher); err != nil {
+		log.Printf("❌ Error encoding response: %v", err)
 	}
 }
 
